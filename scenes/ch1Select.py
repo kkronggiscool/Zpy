@@ -19,7 +19,9 @@ class Ch1SelectScene:
             self.state = "name_input"
             self.setup_name_input()
         else:
-            self.state = "skip"
+            self.state = "show_data"
+            self.load_save_data()
+            self.setup_data_navigation()
     
     def setup_name_input(self):
         self.keyboard = [
@@ -44,8 +46,31 @@ class Ch1SelectScene:
         self.target_soul_x = 0
         self.target_soul_y = 0
     
+
+    
+    def load_save_data(self):
+        config = configparser.ConfigParser()
+        config.read("data/Zeltarune.ini")
+        self.player_name = config.get('player', 'name', fallback='UNKNOWN')
+        self.player_hp = config.get('player', 'playerHp', fallback='20')
+        self.max_player_hp = config.get('player', 'maxPlayerHp', fallback='20')
+        self.player_lv = config.get('player', 'playerLv', fallback='1')
+    
+    def setup_data_navigation(self):
+        self.move_sound = pygame.mixer.Sound("resources/snd/snd_moveS.mp3")
+        self.select_sound = pygame.mixer.Sound("resources/snd/snd_oSelect.mp3")
+        self.data_selected = 0  # 0 = box, 1 = quit, 2 = ch select
+        self.soul_x = 0
+        self.soul_y = 0
+        self.target_soul_x = 0
+        self.target_soul_y = 0
+    
     def update(self, dt):
-        if self.state == "name_input":
+        if self.state == "show_data":
+            # Smooth soul movement
+            self.soul_x += (self.target_soul_x - self.soul_x) * 8 * dt
+            self.soul_y += (self.target_soul_y - self.soul_y) * 8 * dt
+        elif self.state == "name_input":
             # Smooth soul movement
             self.soul_x += (self.target_soul_x - self.soul_x) * 8 * dt
             self.soul_y += (self.target_soul_y - self.soul_y) * 8 * dt
@@ -64,7 +89,68 @@ class Ch1SelectScene:
                     self.confirmation_state = "confirm"
     
     def draw(self, screen):
-        if self.state == "skip":
+        if self.state == "show_data":
+            screen_width, screen_height = screen.get_size()
+            
+            # Create player info text
+            info_text = f"{self.player_name}     LV {self.player_lv}    HP {self.player_hp}/{self.max_player_hp}"
+            
+            # Box colors based on selection
+            box_color = (0, 255, 0) if self.data_selected == 0 else (0, 128, 0)
+            text_color = (0, 255, 0) if self.data_selected == 0 else (0, 128, 0)
+            text_surface = self.font.render(info_text, True, text_color)
+            
+            # Calculate box dimensions
+            padding = 20
+            box_width = text_surface.get_width() + padding * 2
+            box_height = text_surface.get_height() + padding * 2
+            box_x = (screen_width - box_width) // 2
+            box_y = (screen_height - box_height) // 2
+            
+            # Draw green border box
+            pygame.draw.rect(screen, box_color, (box_x, box_y, box_width, box_height), 3)
+            
+            # Draw text inside box
+            text_x = box_x + padding
+            text_y = box_y + padding
+            screen.blit(text_surface, (text_x, text_y))
+            
+            # Bottom options
+            quit_color = (255, 255, 0) if self.data_selected == 1 else (255, 255, 255)
+            ch_color = (255, 255, 0) if self.data_selected == 2 else (255, 255, 255)
+            
+            quit_surface = self.font.render("QUIT", True, quit_color)
+            ch_surface = self.font.render("CH SELECT", True, ch_color)
+            
+            quit_rect = quit_surface.get_rect(center=(screen_width // 2 - 100, screen_height - 50))
+            ch_rect = ch_surface.get_rect(center=(screen_width // 2 + 100, screen_height - 50))
+            
+            screen.blit(quit_surface, quit_rect)
+            screen.blit(ch_surface, ch_rect)
+            
+            # Update soul target position
+            if self.data_selected == 0:
+                self.target_soul_x = box_x + box_width + 10
+                self.target_soul_y = box_y + box_height // 2 - self.soul_img.get_height() // 2
+            elif self.data_selected == 1:
+                self.target_soul_x = quit_rect.centerx - self.soul_img.get_width() // 2
+                self.target_soul_y = quit_rect.centery - self.soul_img.get_height() // 2
+            else:
+                self.target_soul_x = ch_rect.centerx - self.soul_img.get_width() // 2
+                self.target_soul_y = ch_rect.centery - self.soul_img.get_height() // 2
+            
+            # Draw soul
+            if self.data_selected == 0:
+                # Next to box
+                screen.blit(self.soul_img, (int(self.soul_x), int(self.soul_y)))
+            else:
+                # Behind text
+                soul_copy = self.soul_img.copy()
+                soul_copy.set_alpha(128)
+                screen.blit(soul_copy, (int(self.soul_x), int(self.soul_y)))
+                screen.blit(quit_surface, quit_rect)
+                screen.blit(ch_surface, ch_rect)
+            
             return
             
         if not self.save_exists:
@@ -134,6 +220,38 @@ class Ch1SelectScene:
                 screen.blit(no_surface, no_rect)
     
     def handle_event(self, event):
+        if self.state == "show_data" and event.type == pygame.KEYDOWN:
+            if event.key in [pygame.K_w, pygame.K_UP]:
+                self.move_sound.play()
+                if self.data_selected == 1 or self.data_selected == 2:  # From QUIT or CH SELECT to box
+                    self.data_selected = 0
+            elif event.key in [pygame.K_s, pygame.K_DOWN]:
+                self.move_sound.play()
+                if self.data_selected == 0:  # From box to QUIT
+                    self.data_selected = 1
+            elif event.key in [pygame.K_a, pygame.K_LEFT]:
+                self.move_sound.play()
+                if self.data_selected == 2:  # From CH SELECT to QUIT
+                    self.data_selected = 1
+            elif event.key in [pygame.K_d, pygame.K_RIGHT]:
+                self.move_sound.play()
+                if self.data_selected == 1:  # From QUIT to CH SELECT
+                    self.data_selected = 2
+            elif event.key in [pygame.K_RETURN, pygame.K_z]:
+                if self.data_selected == 0:  # Box selected - do nothing
+                    pass
+                elif self.data_selected == 1:  # Quit
+                    self.select_sound.play()
+                    pygame.quit()
+                    import sys
+                    sys.exit()
+                elif self.data_selected == 2:  # CH SELECT
+                    self.select_sound.play()
+                    pygame.mixer.music.stop()
+                    from .intro import IntroScene
+                    self.scene_manager.set_scene(IntroScene(self.scene_manager))
+            return
+            
         if not self.save_exists and event.type == pygame.KEYDOWN:
             if self.confirmation_state == "input":
                 old_row, old_col = self.selected_row, self.selected_col
@@ -165,6 +283,11 @@ class Ch1SelectScene:
                 elif event.key in [pygame.K_RETURN, pygame.K_z]:
                     if self.confirm_selected == 0:  # YES
                         self.create_save_file()
+                        # Transition to data screen
+                        self.state = "show_data"
+                        self.save_exists = True
+                        self.load_save_data()
+                        self.setup_data_navigation()
                     else:  # NO
                         self.confirmation_state = "input"
                         self.top_text = "NAME THE HUMAN."
